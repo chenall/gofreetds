@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"unsafe"
+
 	//	"log"
 	"sync"
 	"time"
@@ -38,13 +39,16 @@ import (
    return msgHandler((long)dbproc, msgno, msgstate, severity, msgtext, srvname, procname, line);
  }
 
- static void my_dblogin(LOGINREC* login, char* username, char* password) {
+ static void my_dblogin(LOGINREC* login, char* username, char* password, char *appname) {
   dbsetlogintime(10);
   dberrhandle(err_handler);
   dbmsghandle(msg_handler);
   DBSETLUSER(login, username);
   DBSETLPWD(login, password);
   dbsetlname(login, "UTF-8", DBSETCHARSET);
+  if (appname && *appname) {
+    dbsetlname(login, appname, DBSETAPP);
+  }
  }
 
  static void my_dblogin_setdb(LOGINREC* login, char* dbname) {
@@ -209,7 +213,9 @@ func (conn *Conn) getDbProc() (*C.DBPROCESS, error) {
 	defer C.free(unsafe.Pointer(cuser))
 	cpwd := C.CString(conn.pwd)
 	defer C.free(unsafe.Pointer(cpwd))
-	C.my_dblogin(login, cuser, cpwd)
+	capp := C.CString(conn.appname)
+	defer C.free(unsafe.Pointer(capp))
+	C.my_dblogin(login, cuser, cpwd, capp)
 
 	// If a database name is specified in the connection string,
 	// add the DB name to the login packet.
@@ -441,7 +447,7 @@ func (conn *Conn) setDefaults() error {
         set ansi_warnings on
         set ansi_padding on
         set concat_null_yields_null on
-	   	`)
+	   	` + conn.options)
 		if err != nil {
 			return err
 		}

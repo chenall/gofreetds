@@ -6,14 +6,14 @@ import (
 )
 
 type credentials struct {
-	user, pwd, host, database, mirrorHost, compatibility string
-	maxPoolSize, lockTimeout                             int
+	user, pwd, host, database, mirrorHost, compatibility, appname, options string
+	maxPoolSize, lockTimeout                                               int
 }
 
 // NewCredentials fills credentials stusct from connection string
 func NewCredentials(connStr string) *credentials {
 	parts := strings.Split(connStr, ";")
-	crd := &credentials{maxPoolSize: 100}
+	crd := &credentials{maxPoolSize: 100, appname: "gofreetds"}
 	for _, part := range parts {
 		kv := strings.SplitN(part, "=", 2)
 		if len(kv) == 2 {
@@ -22,9 +22,9 @@ func NewCredentials(connStr string) *credentials {
 			switch key {
 			case "server", "host":
 				crd.host = value
-			case "database":
+			case "database", "dbname":
 				crd.database = value
-			case "user id", "user_id", "user":
+			case "user id", "user_id", "user", "UID":
 				crd.user = value
 			case "password", "pwd":
 				crd.pwd = value
@@ -40,8 +40,11 @@ func NewCredentials(connStr string) *credentials {
 				if i, err := strconv.Atoi(value); err == nil {
 					crd.lockTimeout = i
 				}
+			case "app", "appname":
+				crd.appname = value
+			case "options":
+				crd.options = "set " + strings.ReplaceAll(value, ",", "\nset ")
 			}
-
 		}
 	}
 	return crd
