@@ -28,7 +28,7 @@ todo
 /example/listic
 
 *.out
-
+.*
 
 example/exec/exec
 example/mssql/mssql

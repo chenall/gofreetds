@@ -135,8 +135,13 @@ func go2SqlDataType(value interface{}) (string, string, error) {
 		}
 	case time.Time:
 		{
-			strValue = t.Format(time.RFC3339Nano)
-			return "datetimeoffset", fmt.Sprintf("'%s'", quote(strValue)), nil
+			//from https://github.com/minus5/gofreetds/issues/59
+			//strValue = t.Format(time.RFC3339Nano)
+			//return "datetimeoffset", fmt.Sprintf("'%s'", quote(strValue)), nil
+			// SQL Server 2000 does not support datetimeoffset type
+			// Therefore, we parse to datetime instead.
+			strValue = t.Format("2006-01-02 15:04:05.000")
+			return "datetime", fmt.Sprintf("'%s'", quote(strValue)), nil
 		}
 	case []byte:
 		{
