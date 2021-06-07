@@ -132,13 +132,29 @@ func (conn *Conn) addError(err string) {
 	conn.Error += err
 }
 
-//Connect to the database with connection string, returns new connection or error.
+var crdMu sync.RWMutex
+var crdCache = map[string]*credentials{}
+
+// NewConn Connect to the database with connection string, returns new connection or error.
 //Example:
 //  conn, err := NewConn("host=myServerA;database=myDataBase;user=myUsername;pwd=myPassword;mirror=myMirror")
 //
 //Mirror is optional, other params are mandatory.
 func NewConn(connStr string) (*Conn, error) {
-	return connectWithCredentials(NewCredentials(connStr))
+	crdMu.RLock()
+	crd := crdCache[connStr]
+	crdMu.RUnlock()
+	if crd == nil {
+		crdMu.Lock()
+		defer crdMu.Unlock()
+		conn, err := connectWithCredentials(NewCredentials(connStr))
+		if err == nil {
+			crdCache[connStr] = &conn.credentials
+		}
+		return conn, err
+	}
+	return connectWithCredentials(crd)
+
 }
 
 func connectWithCredentials(crd *credentials) (*Conn, error) {
@@ -155,24 +171,25 @@ func connectWithCredentials(crd *credentials) (*Conn, error) {
 }
 
 //https://docs.microsoft.com/en-us/troubleshoot/sql/general/determine-version-edition-update-level
-var sqlVersion = map[string]byte{
+var sqlVersion = map[int]byte{
 	//15.0.x.x	SQL Server 2019
-	"15": DBVERSION_74,
+	15: DBVERSION_74,
 	//14.0.x.x	SQL Server 2017
-	"14": DBVERSION_74,
+	14: DBVERSION_74,
 	//13.0.x.x	SQL Server 2016
-	"13": DBVERSION_74,
+	13: DBVERSION_74,
 	//12.0.x.x	SQL Server 2014
-	"12": DBVERSION_74,
+	12: DBVERSION_74,
 	//11.0.x.x	SQL Server 2012
-	"11": DBVERSION_74,
+	11: DBVERSION_74,
 	//10.50.x.x	SQL Server 2008 R2
 	//10.00.x.x	SQL Server 2008
-	"10": DBVERSION_73,
+	10: DBVERSION_73,
 	//9.00.x.x	SQL Server 2005
-	"9": DBVERSION_72,
+	9: DBVERSION_72,
 	//8.00.x.x	SQL Server 2000
-	"8": DBVERSION_71,
+	8: DBVERSION_71,
+	0: DBVERSION_UNKNOWN,
 }
 
 func (conn *Conn) connect() (*Conn, error) {
@@ -195,14 +212,12 @@ func (conn *Conn) connect() (*Conn, error) {
 	if CheckSqlVersion {
 		//获取数据库版本
 		if r, e := conn.SelectValue("SELECT SERVERPROPERTY('ProductVersion')"); e == nil {
-			if v, ok := r.(string); ok {
-				if ver := strings.SplitN(v, ".", 2); len(ver) > 1 {
-					if vn, ok := sqlVersion[ver[0]]; ok {
-						conn.version = vn
-						conn.close()
-						return conn.connect()
-					}
+			if v, ok := r.(string); ok && len(v) > 2 {
+				n := int(v[0] - '0')
+				if v[1] != '.' {
+					n = 10*n + int(v[0]-'0')
 				}
+				conn.version, _ = sqlVersion[n]
 			}
 		}
 	}

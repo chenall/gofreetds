@@ -50,6 +50,7 @@ type credentials struct {
 
 // NewCredentials fills credentials stusct from connection string
 func NewCredentials(connStr string) *credentials {
+	//fmt.Println(connStr)
 	parts := strings.Split(connStr, ";")
 	crd := &credentials{maxPoolSize: 100, appname: "gofreetds", version: DBVERSION_UNKNOWN}
 	for _, part := range parts {
@@ -81,9 +82,7 @@ func NewCredentials(connStr string) *credentials {
 			case "app", "appname":
 				crd.appname = value
 			case "ver", "version":
-				if v, ok := tdsVersion[value]; ok {
-					crd.version = v
-				}
+				crd.version = tdsVersion[value]
 			case "options":
 				crd.options = "set " + strings.ReplaceAll(value, ",", "\nset ")
 			}
