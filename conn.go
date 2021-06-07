@@ -154,16 +154,58 @@ func connectWithCredentials(crd *credentials) (*Conn, error) {
 	return conn, nil
 }
 
+//https://docs.microsoft.com/en-us/troubleshoot/sql/general/determine-version-edition-update-level
+var sqlVersion = map[string]byte{
+	//15.0.x.x	SQL Server 2019
+	"15": DBVERSION_74,
+	//14.0.x.x	SQL Server 2017
+	"14": DBVERSION_74,
+	//13.0.x.x	SQL Server 2016
+	"13": DBVERSION_74,
+	//12.0.x.x	SQL Server 2014
+	"12": DBVERSION_74,
+	//11.0.x.x	SQL Server 2012
+	"11": DBVERSION_74,
+	//10.50.x.x	SQL Server 2008 R2
+	//10.00.x.x	SQL Server 2008
+	"10": DBVERSION_73,
+	//9.00.x.x	SQL Server 2005
+	"9": DBVERSION_72,
+	//8.00.x.x	SQL Server 2000
+	"8": DBVERSION_71,
+}
+
 func (conn *Conn) connect() (*Conn, error) {
 	//log.Printf("freetds connecting to %s@%s.%s", conn.user, conn.host, conn.database)
 	conn.close()
 	conn.clearMessages()
+	//自动检测 SQL 版本并使用最合适的 TDS 版本号
+	//先使用 4.2 的版本，连接测试
+	var CheckSqlVersion bool
+	if conn.version == DBVERSION_UNKNOWN {
+		conn.version = DBVERSION_42
+		CheckSqlVersion = true
+	}
 	dbproc, err := conn.getDbProc()
 	if err != nil {
 		return nil, err
 	}
 	conn.dbproc = dbproc
 	conn.addr = int64(C.dbproc_addr(dbproc))
+	if CheckSqlVersion {
+		//获取数据库版本
+		if r, e := conn.SelectValue("SELECT SERVERPROPERTY('ProductVersion')"); e == nil {
+			if v, ok := r.(string); ok {
+				if ver := strings.SplitN(v, ".", 2); len(ver) > 1 {
+					if vn, ok := sqlVersion[ver[0]]; ok {
+						conn.version = vn
+						conn.close()
+						return conn.connect()
+					}
+				}
+			}
+		}
+	}
 	addConnection(conn)
 	if err := conn.setDefaults(); err != nil {
 		conn.close()
@@ -226,20 +268,21 @@ func (conn *Conn) getDbProc() (*C.DBPROCESS, error) {
 		defer C.free(unsafe.Pointer(cdatabase))
 		C.my_dblogin_setdb(login, cdatabase)
 	}
-
+	chost := C.CString(conn.host)
+	defer C.free(unsafe.Pointer(chost))
 	// Added for Sybase compatibility mode
 	// Version cannot be set to 7.2
 	// Allowing version to be set inside freetds
 	if !conn.sybaseMode() && !conn.sybaseMode125() {
-		C.my_setlversion(login)
+		C.dbsetlversion(login, (C.uchar)(conn.version))
+		//C.my_setlversion(login)
 	}
 
-	chost := C.CString(conn.host)
-	defer C.free(unsafe.Pointer(chost))
 	dbproc := C.dbopen(login, chost)
 	if dbproc == nil {
 		return nil, dbProcError("dbopen error")
 	}
+	//fmt.Printf("TdsVer:%s db: %d\n", C.GoString(C.dbversion()), C.dbtds(dbproc))
 	conn.readFreeTdsVersion()
 	return dbproc, nil
 }
