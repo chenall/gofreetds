@@ -218,7 +218,12 @@ func (conn *Conn) connect() (*Conn, error) {
 					n = 10*n + int(v[0]-'0')
 				}
 				conn.version, _ = sqlVersion[n]
+				conn.close()
+				return conn.connect()
 			}
+		} else { //异常直接返回
+			conn.close()
+			return nil, e
 		}
 	}
 	addConnection(conn)
