@@ -88,5 +88,6 @@ func NewCredentials(connStr string) *credentials {
 			}
 		}
 	}
+	crd.appname += "@" + FreeTDS.Version
 	return crd
 }

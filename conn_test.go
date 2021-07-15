@@ -13,7 +13,7 @@ import (
 )
 
 var CREATE_DB_SCRIPTS = [...]string{`
-if exists(select * from sys.tables where name = 'freetds_types')
+if OBJECT_ID('freetds_types','U')>0
 drop table freetds_types
 `, `
 create table freetds_types (
@@ -50,13 +50,13 @@ values (-2147483648, -9223372036854775808, -32768,  0, 'nije reko dobar dan',N'n
 
 insert into freetds_types (int) values (3)
 `, `
-if exists(select * from sys.procedures where name = 'freetds_return_value')
+if OBJECT_ID('freetds_return_value','P')>0
   drop procedure freetds_return_value
 `, `
 create procedure freetds_return_value as
   return -5`,
 	`
-if exists(select * from sys.tables where name = 'tm')
+if OBJECT_ID('tm','U')>0
 drop table tm
 `, `
 create table [dbo].[tm] (
@@ -589,6 +589,8 @@ func TestParseFreeTdsVersion(t *testing.T) {
 		{"  $Id: dblib.c,v 1.378.2.4 2011-06-07 08:52:29 freddy77 Exp $", []int{}},
 		{" freetds v0.a.b ", []int{}},
 		{" freetds v0.96.0.rc ", []int{0, 96, 0}},
+		{" freetds v1.3 ", []int{1, 3}},
+		{" freetds vdev.1.2.40 ", []int{1, 2, 40}},
 	}
 	for _, d := range data {
 		assert.Equal(t, d.expected, parseFreeTdsVersion(d.version))

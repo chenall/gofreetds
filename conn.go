@@ -68,6 +68,26 @@ import "C"
 var connections map[int64]*Conn = make(map[int64]*Conn)
 var connectionsMutex sync.Mutex
 
+type freetds struct {
+	Version string
+	GTE095  bool
+}
+
+var FreeTDS freetds
+
+func init() {
+	FreeTDS = freetds{
+		Version: C.GoString(C.dbversion()),
+		GTE095:  true,
+	}
+	ver := parseFreeTdsVersion(FreeTDS.Version)
+	if len(ver) >= 2 {
+		if ver[0] == 0 && ver[1] < 95 {
+			FreeTDS.GTE095 = false
+		}
+	}
+}
+
 func getConnection(addr int64) *Conn {
 	connectionsMutex.Lock()
 	defer connectionsMutex.Unlock()
@@ -291,7 +311,7 @@ func (conn *Conn) getDbProc() (*C.DBPROCESS, error) {
 	chost := C.CString(conn.host)
 	defer C.free(unsafe.Pointer(chost))
 	// Added for Sybase compatibility mode
-	// Version cannot be set to 7.2
+	// FreeTDS cannot be set to 7.2
 	// Allowing version to be set inside freetds
 	if !conn.sybaseMode() && !conn.sybaseMode125() {
 		C.dbsetlversion(login, (C.uchar)(conn.version))
@@ -303,7 +323,7 @@ func (conn *Conn) getDbProc() (*C.DBPROCESS, error) {
 		return nil, dbProcError("dbopen error")
 	}
 	//fmt.Printf("TdsVer:%s db: %d\n", C.GoString(C.dbversion()), C.dbtds(dbproc))
-	conn.readFreeTdsVersion()
+	conn.freetdsVersionGte095 = FreeTDS.GTE095
 	return dbproc, nil
 }
 
@@ -537,17 +557,20 @@ func (conn *Conn) setFreetdsVersionGte095(freeTdsVersion []int) {
 }
 
 func parseFreeTdsVersion(dbVersion string) []int {
-	rxFreeTdsVersion := regexp.MustCompile(`v(\d+).(\d+).(\d+)`)
-	//log.Println("FreeTDS Version: ", dbVersion)
+	rxFreeTdsVersion := regexp.MustCompile(`(?:v|dev.)(\d+\.[\d.]+)`)
+	//log.Println("FreeTDS FreeTDS: ", dbVersion)
 	freeTdsVersion := make([]int, 0)
 	versionMatch := rxFreeTdsVersion.FindStringSubmatch(dbVersion)
-	if len(versionMatch) == 4 {
-		for v, ver := range versionMatch {
-			if v > 0 {
-				if num, err := strconv.Atoi(ver); err == nil {
-					freeTdsVersion = append(freeTdsVersion, num)
-				}
+	if len(versionMatch) == 2 {
+		for _, ver := range strings.Split(versionMatch[1], ".") {
+			if num, err := strconv.Atoi(ver); err == nil {
+				freeTdsVersion = append(freeTdsVersion, num)
+			} else {
+				break
 			}
+		}
+		if len(freeTdsVersion) < 2 {
+			return []int{}
 		}
 	}
 	return freeTdsVersion
